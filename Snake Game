@@ -1,0 +1,267 @@
+#include <iostream>
+#include <raylib.h>
+#include <deque>
+#include <raymath.h>
+using namespace std;
+
+Color green = {173, 216, 230, 255};
+Color darkgreen = {43, 51, 24, 255};
+int cellsiez = 30;
+int cellcount = 25;
+double lastTime = 0;
+const unsigned int n = 2;
+bool AddNewSegment = false;
+
+bool Elementindeque(Vector2 elemant, deque<Vector2> deque, unsigned int df = 0)
+{
+    for (unsigned int i = df; i < deque.size(); i++)
+    {
+        if (Vector2Equals(deque[i], elemant))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool eventT(double inteval)
+{
+    double currentTime = GetTime();
+    if ((currentTime - lastTime) >= inteval)
+    {
+        lastTime = currentTime;
+        return true;
+    }
+    return false;
+}
+
+class Food
+{
+public:
+    Vector2 pos;
+    Texture2D f;
+
+    Food(deque<Vector2> sanekbody)
+    {
+        Image image = LoadImage("Food.png");
+        ImageResize(&image, cellsiez, cellsiez);
+        f = LoadTextureFromImage(image);
+        UnloadImage(image);
+        pos = GetRandoampos(sanekbody);
+    }
+
+    ~Food()
+    {
+        UnloadTexture(f);
+    }
+
+    void Draw()
+    {
+        DrawTexture(f, pos.x * cellsiez, pos.y * cellsiez, WHITE);
+    }
+
+    Vector2 Getrandomcell()
+    {
+        float x = GetRandomValue(n, cellcount - 2 * n);
+        float y = GetRandomValue(n, cellcount - 2 * n);
+        return (Vector2){x, y};
+    }
+
+    Vector2 GetRandoampos(deque<Vector2> sanekbody)
+    {
+        Vector2 elemant = Getrandomcell();
+        while (Elementindeque(elemant, sanekbody))
+        {
+            elemant = Getrandomcell();
+        }
+        return elemant;
+    }
+};
+
+class Sanek
+{
+public:
+    deque<Vector2> body = {Vector2{6, 9}, Vector2{5, 9}, Vector2{4, 9}};
+    Vector2 direction = {1, 0};
+
+    void Draw()
+    {
+        for (unsigned int i = 0; i < body.size(); i++)
+        {
+            float x = body[i].x;
+            float y = body[i].y;
+            Rectangle rec = {x * cellsiez, y * cellsiez, (float)cellsiez, (float)cellsiez};
+            DrawRectangleRounded(rec, 0.5, 6, darkgreen);
+        }
+    }
+
+    void update()
+    {
+        body.push_front(Vector2Add(body[0], direction));
+        if (AddNewSegment)
+        {
+            AddNewSegment = false;
+        }
+        else
+        {
+            body.pop_back();
+        }
+    }
+
+    void Reset()
+    {
+        body = {Vector2{6, 9}, Vector2{5, 9}, Vector2{4, 9}};
+        direction = {1, 0};
+    }
+};
+
+class Frem
+{
+public:
+    void FremDraw()
+    {
+        DrawRectangleLines((float)n * cellsiez, (float)n * cellsiez, 
+                           cellsiez * (cellcount - 2 * n), cellsiez * (cellcount - 2 * n), BLACK);
+    }
+};
+
+class Game
+{
+public:
+    Sanek sanek = Sanek();
+    Food food = Food(sanek.body);
+    Frem frem = Frem();
+    Sound eat = LoadSound("eat.mp3");
+    Sound stating = LoadSound("Stating.mp3");
+    Sound Over = LoadSound("GameOver.mp3");
+    float scoar = 0.00;
+    bool Running = true;
+
+    void Draw()
+    {
+        if (Running)
+        {
+            DrawText("Retro Snak Game", 3 * cellsiez, 1 * cellsiez, cellsiez, BLACK);
+            DrawText(TextFormat("Scoar:%.2f", scoar), 15 * cellsiez, cellsiez, cellsiez, BLACK);
+        }
+        if (!Running)
+        {
+            DrawText(" Game Over.....", 3 * cellsiez, 1 * cellsiez, cellsiez, BLACK);
+            DrawText("Presse Any Arro Key", 15 * cellsiez, 1 * cellsiez, cellsiez - 10, BLACK);
+        }
+
+        frem.FremDraw();
+        food.Draw();
+        sanek.Draw();
+    }
+
+    void update()
+    {
+        if (CheckcolisionTO_Frem(sanek.body[0]))
+        {
+            GameOver();
+        }
+        else
+        {
+            if (Running)
+            {
+                sanek.update();
+                checkcollisionOf_S_F();
+                CheckCollisionWithTail();
+            }
+        }
+    }
+
+    void checkcollisionOf_S_F()
+    {
+        if (Vector2Equals(sanek.body[0], food.pos))
+        {
+            PlaySound(eat);
+            AddNewSegment = true;
+            scoar += 10;
+            food.pos = food.GetRandoampos(sanek.body);
+        }
+    }
+
+    bool CheckcolisionTO_Frem(Vector2 deque)
+    {
+        if (deque.x == (cellcount - n - 1) || deque.x == 2)
+        {
+            return true;
+        }
+        if (deque.y == (cellcount - n - 1) || deque.y == 2)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    void GameOver()
+    {
+        sanek.Reset();
+        PlaySound(Over);
+        food.pos = food.GetRandoampos(sanek.body);
+        Running = false;
+    }
+
+    void CheckCollisionWithTail()
+    {
+        deque<Vector2> headlessBody = sanek.body;
+        headlessBody.pop_front();
+        if (Elementindeque(sanek.body[0], headlessBody))
+        {
+            GameOver();
+        }
+    }
+};
+
+int main()
+{
+    cout << "Snake game";
+    InitWindow(cellsiez * cellcount, cellsiez * cellcount, "My snake Game");
+    InitAudioDevice();
+
+    Game game = Game();
+    SetTargetFPS(55);
+
+    while (!WindowShouldClose())
+    {
+        if (IsKeyPressed(KEY_UP) && game.sanek.direction.y != 1)
+        {
+            game.sanek.direction = {0, -1};
+            game.Running = true;
+        }
+        if (IsKeyPressed(KEY_DOWN) && game.sanek.direction.y != -1)
+        {
+            game.sanek.direction = {0, 1};
+            game.Running = true;
+        }
+        if (IsKeyPressed(KEY_RIGHT) && game.sanek.direction.x != -1)
+        {
+            game.sanek.direction = {1, 0};
+            game.Running = true;
+        }
+        if (IsKeyPressed(KEY_LEFT) && game.sanek.direction.x != 1)
+        {
+            game.sanek.direction = {-1, 0};
+            game.Running = true;
+        }
+
+        BeginDrawing();
+        ClearBackground(green);
+
+        if (eventT(0.3))
+        {
+            game.update();
+        }
+
+        game.Draw();
+        EndDrawing();
+    }
+
+    CloseAudioDevice();
+    CloseWindow();
+
+    return 0;
+}
